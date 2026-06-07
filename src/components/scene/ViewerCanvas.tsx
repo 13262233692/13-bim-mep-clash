@@ -4,8 +4,9 @@ import { OrbitControls, Grid, Environment, Stats } from '@react-three/drei';
 import { EffectComposer, Bloom, SSAO } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { MepScene } from './MepScene';
+import { ClashHighlights } from './ClashHighlights';
 import { useMepClashStore } from '@/store';
-import type { InstancedMeshData } from '@/types';
+import type { InstancedMeshData, ClashPair } from '@/types';
 
 type SimpleGeometry = { positions: Float32Array; indices: Uint32Array; normals: Float32Array | null };
 
@@ -66,9 +67,10 @@ function SceneGround() {
 interface ViewerCanvasProps {
   geometries: Map<number, SimpleGeometry>;
   instances: Map<string, InstancedMeshData>;
+  clashPairs?: ClashPair[];
 }
 
-export function ViewerCanvas({ geometries, instances }: ViewerCanvasProps) {
+export function ViewerCanvas({ geometries, instances, clashPairs }: ViewerCanvasProps) {
   const xrayMode = useMepClashStore((s) => s.xrayMode);
 
   return (
@@ -88,6 +90,10 @@ export function ViewerCanvas({ geometries, instances }: ViewerCanvasProps) {
       <SceneGround />
 
       <MepScene geometries={geometries} instances={instances} />
+
+      {clashPairs && clashPairs.length > 0 && (
+        <ClashHighlights clashes={clashPairs} />
+      )}
 
       <OrbitControls
         makeDefault

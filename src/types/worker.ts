@@ -12,6 +12,14 @@ export interface GeometryWorkerApi {
     positions: Float32Array,
     indices: Uint32Array
   ): TransferableOptimizedGeometry;
+  buildBVH(
+    boxes: TransferableBoundingBox[]
+  ): TransferableBVHBuildResult;
+  detectHardClashes(
+    boxes: TransferableBoundingBox[],
+    bvhNodes: TransferableBVHNodeData[],
+    primIndices: Int32Array
+  ): TransferableClashPair[];
 }
 
 export interface TransferableInstanceData {
@@ -31,4 +39,31 @@ export interface TransferableOptimizedGeometry {
   indices: Uint32Array;
   vertex_count: number;
   index_count: number;
+}
+
+export interface TransferableFlatAABB {
+  minX: number; minY: number; minZ: number;
+  maxX: number; maxY: number; maxZ: number;
+}
+
+export interface TransferableBVHNodeData {
+  aabb: TransferableFlatAABB;
+  leftChild: number;
+  rightChild: number;
+  firstPrim: number;
+  primCount: number;
+  isLeaf: boolean;
+}
+
+export interface TransferableBVHBuildResult {
+  nodes: TransferableBVHNodeData[];
+  primIndices: Int32Array;
+}
+
+export interface TransferableClashPair {
+  idA: number;
+  idB: number;
+  penetration: number;
+  overlapMin: [number, number, number];
+  overlapMax: [number, number, number];
 }

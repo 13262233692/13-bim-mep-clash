@@ -102,7 +102,7 @@ export interface OptimizedGeometry {
   index_count: number;
 }
 
-export type ParseStage = 'idle' | 'reading' | 'parsing' | 'extracting' | 'converting' | 'ready' | 'error';
+export type ParseStage = 'idle' | 'reading' | 'parsing' | 'extracting' | 'converting' | 'clash_detecting' | 'ready' | 'error';
 
 export interface ParseProgress {
   stage: ParseStage;
@@ -111,4 +111,42 @@ export interface ParseProgress {
   entity_count: number;
   geometry_count: number;
   memory_mb: number;
+}
+
+export interface FlatAABB {
+  minX: number; minY: number; minZ: number;
+  maxX: number; maxY: number; maxZ: number;
+}
+
+export interface BVHNodeData {
+  aabb: FlatAABB;
+  leftChild: number;
+  rightChild: number;
+  firstPrim: number;
+  primCount: number;
+  isLeaf: boolean;
+}
+
+export interface BVHBuildResult {
+  nodes: BVHNodeData[];
+  primIndices: Int32Array;
+}
+
+export interface ClashPair {
+  idA: number;
+  idB: number;
+  penetration: number;
+  overlapMin: [number, number, number];
+  overlapMax: [number, number, number];
+}
+
+export type ClashSeverity = 'critical' | 'moderate' | 'minor';
+
+export interface ClashResult {
+  pairs: ClashPair[];
+  totalCount: number;
+  criticalCount: number;
+  moderateCount: number;
+  minorCount: number;
+  detectionTimeMs: number;
 }

@@ -1,6 +1,6 @@
-import type { TransferableInstanceData, TransferableBoundingBox, TransferableOptimizedGeometry } from '@/types';
+import type { TransferableInstanceData, TransferableBoundingBox, TransferableOptimizedGeometry, TransferableBVHBuildResult, TransferableBVHNodeData, TransferableClashPair } from '@/types';
 
-type WorkerCommand = 'computeInstancedMatrices' | 'computeBoundingBoxes' | 'optimizeVertexData';
+type WorkerCommand = 'computeInstancedMatrices' | 'computeBoundingBoxes' | 'optimizeVertexData' | 'buildBVH' | 'detectHardClashes';
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -109,6 +109,24 @@ class GeometryWorkerPool {
     return this.dispatch<TransferableOptimizedGeometry>('optimizeVertexData', {
       positions,
       indices,
+    });
+  }
+
+  async buildBVH(
+    boxes: TransferableBoundingBox[]
+  ): Promise<TransferableBVHBuildResult> {
+    return this.dispatch<TransferableBVHBuildResult>('buildBVH', { boxes });
+  }
+
+  async detectHardClashes(
+    boxes: TransferableBoundingBox[],
+    bvhNodes: TransferableBVHNodeData[],
+    primIndices: Int32Array
+  ): Promise<TransferableClashPair[]> {
+    return this.dispatch<TransferableClashPair[]>('detectHardClashes', {
+      boxes,
+      bvhNodes,
+      primIndices,
     });
   }
 

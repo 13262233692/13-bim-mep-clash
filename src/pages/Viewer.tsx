@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PanelLeftClose, PanelLeftOpen, ArrowLeft } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, ArrowLeft, ShieldAlert, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { ViewerCanvas } from '@/components/scene/ViewerCanvas';
 import { LevelTree } from '@/components/ui/LevelTree';
@@ -8,6 +8,7 @@ import { SystemFilter } from '@/components/ui/SystemFilter';
 import { ViewerToolbar } from '@/components/ui/ViewerToolbar';
 import { StatusBar } from '@/components/ui/StatusBar';
 import { useMepClashStore } from '@/store';
+import { runClashDetection } from '@/utils/clash';
 
 export default function ViewerPage() {
   const navigate = useNavigate();
@@ -20,7 +21,12 @@ export default function ViewerPage() {
   const setSelectedLevel = useMepClashStore((s) => s.setSelectedLevel);
   const geometryRegistry = useMepClashStore((s) => s.geometryRegistry);
   const instanceRegistry = useMepClashStore((s) => s.instanceRegistry);
+  const boundingBoxes = useMepClashStore((s) => s.boundingBoxes);
   const xrayMode = useMepClashStore((s) => s.xrayMode);
+  const clashResult = useMepClashStore((s) => s.clashResult);
+  const clashDetecting = useMepClashStore((s) => s.clashDetecting);
+  const setClashResult = useMepClashStore((s) => s.setClashResult);
+  const setClashDetecting = useMepClashStore((s) => s.setClashDetecting);
 
   const [panelOpen, setPanelOpen] = useState(true);
 
@@ -35,6 +41,19 @@ export default function ViewerPage() {
     });
     return map;
   }, [geometryRegistry]);
+
+  const handleClashDetect = useCallback(async () => {
+    if (clashDetecting) return;
+    setClashDetecting(true);
+    try {
+      const result = await runClashDetection(boundingBoxes);
+      setClashResult(result);
+    } catch {
+      setClashResult(null);
+    } finally {
+      setClashDetecting(false);
+    }
+  }, [boundingBoxes, clashDetecting, setClashDetecting, setClashResult]);
 
   if (!ifcModel) {
     return (
@@ -89,6 +108,38 @@ export default function ViewerPage() {
                 />
               </div>
 
+              <div className="border-t border-[#2D3548] pt-4 mx-3">
+                <button
+                  onClick={handleClashDetect}
+                  disabled={clashDetecting}
+                  className={`
+                    w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                    ${clashDetecting
+                      ? 'bg-[#FF6B35]/10 text-[#FF6B35] cursor-wait'
+                      : 'bg-[#FF6B35]/15 text-[#FF6B35] hover:bg-[#FF6B35]/25 shadow-[0_0_10px_rgba(255,107,53,0.15)]'
+                    }
+                  `}
+                >
+                  {clashDetecting ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>碰撞计算中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldAlert size={16} />
+                      <span>硬碰撞检测</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {clashResult && (
+                <div className="border-t border-[#2D3548] pt-4 mx-3">
+                  <ClashResultPanel result={clashResult} />
+                </div>
+              )}
+
               {xrayMode && (
                 <div className="border-t border-[#2D3548] pt-4 mx-3">
                   <XrayInfo />
@@ -112,7 +163,11 @@ export default function ViewerPage() {
         )}
 
         <main className="flex-1 relative">
-          <ViewerCanvas geometries={geoData} instances={instanceRegistry} />
+          <ViewerCanvas
+            geometries={geoData}
+            instances={instanceRegistry}
+            clashPairs={clashResult?.pairs}
+          />
           <ViewerToolbar />
 
           <button
@@ -144,6 +199,38 @@ function ModelInfo({ model }: { model: { entity_count: number; geometry_count: n
       <div className="flex justify-between text-xs">
         <span className="text-[#7D8590]">解析耗时</span>
         <span className="text-[#E6EDF3] font-mono">{model.parse_time_ms}ms</span>
+      </div>
+    </div>
+  );
+}
+
+function ClashResultPanel({ result }: { result: { totalCount: number; criticalCount: number; moderateCount: number; minorCount: number; detectionTimeMs: number } }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-medium text-[#7D8590] uppercase tracking-wider">
+        碰撞检测结果
+      </h3>
+      <div className="bg-[#0D1117] rounded-lg p-3 space-y-2">
+        <div className="flex justify-between text-xs">
+          <span className="text-[#7D8590]">总计</span>
+          <span className="text-[#E6EDF3] font-mono font-medium">{result.totalCount}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-[#FF4444]">严重</span>
+          <span className="text-[#FF4444] font-mono font-medium">{result.criticalCount}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-[#FFB020]">中等</span>
+          <span className="text-[#FFB020] font-mono font-medium">{result.moderateCount}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-[#4A9EFF]">轻微</span>
+          <span className="text-[#4A9EFF] font-mono font-medium">{result.minorCount}</span>
+        </div>
+        <div className="border-t border-[#2D3548] pt-1.5 flex justify-between text-xs">
+          <span className="text-[#7D8590]">计算耗时</span>
+          <span className="text-[#E6EDF3] font-mono">{result.detectionTimeMs.toFixed(0)}ms</span>
+        </div>
       </div>
     </div>
   );

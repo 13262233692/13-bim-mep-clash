@@ -8,6 +8,7 @@ const STAGE_MESSAGES: Record<ParseStage, string> = {
   parsing: 'WASM 并行解析 IFC 数据...',
   extracting: '提取 Swept Solid 几何与空间层级...',
   converting: '转换为 BufferGeometry 顶点数据流...',
+  clash_detecting: 'SAH-BVH 硬碰撞检测中...',
   ready: '解析完成',
   error: '解析失败',
 };
