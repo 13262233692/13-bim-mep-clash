@@ -5,8 +5,10 @@ import { EffectComposer, Bloom, SSAO } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { MepScene } from './MepScene';
 import { ClashHighlights } from './ClashHighlights';
+import { SectionBoxVisual, SectionBoxClippingPlanes } from './SectionBox';
+import { ClearanceMarkers } from './ClearanceMarkers';
 import { useMepClashStore } from '@/store';
-import type { InstancedMeshData, ClashPair } from '@/types';
+import type { InstancedMeshData, ClashPair, ClearanceViolation } from '@/types';
 
 type SimpleGeometry = { positions: Float32Array; indices: Uint32Array; normals: Float32Array | null };
 
@@ -68,10 +70,12 @@ interface ViewerCanvasProps {
   geometries: Map<number, SimpleGeometry>;
   instances: Map<string, InstancedMeshData>;
   clashPairs?: ClashPair[];
+  clearanceViolations?: ClearanceViolation[];
 }
 
-export function ViewerCanvas({ geometries, instances, clashPairs }: ViewerCanvasProps) {
+export function ViewerCanvas({ geometries, instances, clashPairs, clearanceViolations }: ViewerCanvasProps) {
   const xrayMode = useMepClashStore((s) => s.xrayMode);
+  const sectionBoxActive = useMepClashStore((s) => s.sectionBoxActive);
 
   return (
     <Canvas
@@ -79,6 +83,7 @@ export function ViewerCanvas({ geometries, instances, clashPairs }: ViewerCanvas
         antialias: true,
         toneMapping: THREE.ACESFilmicToneMapping,
         toneMappingExposure: 1.1,
+        localClippingEnabled: sectionBoxActive,
       }}
       camera={{ fov: 60, near: 0.1, far: 500 }}
       shadows
@@ -93,6 +98,14 @@ export function ViewerCanvas({ geometries, instances, clashPairs }: ViewerCanvas
 
       {clashPairs && clashPairs.length > 0 && (
         <ClashHighlights clashes={clashPairs} />
+      )}
+
+      <SectionBoxClippingPlanes />
+
+      {sectionBoxActive && <SectionBoxVisual />}
+
+      {clearanceViolations && clearanceViolations.length > 0 && (
+        <ClearanceMarkers violations={clearanceViolations} />
       )}
 
       <OrbitControls

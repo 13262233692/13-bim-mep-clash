@@ -39,6 +39,58 @@ interface TransferableClashPair {
   overlapMax: [number, number, number];
 }
 
+interface TransferableSectionBox {
+  position: [number, number, number];
+  size: [number, number, number];
+  rotation: [number, number, number];
+}
+
+interface TransferableCrossSectionRing {
+  elementId: number;
+  category: string;
+  center: [number, number, number];
+  outerRadius: number;
+  innerRadius: number;
+  points: [number, number][];
+}
+
+interface TransferableStructuralOpening {
+  elementId: number;
+  center: [number, number, number];
+  halfExtents: [number, number];
+  normal: [number, number, number];
+}
+
+interface TransferableClearanceViolation {
+  id: number;
+  pipeId: number;
+  wallId: number;
+  pipeCategory: string;
+  sectionCenter: [number, number, number];
+  sectionNormal: [number, number, number];
+  pipeOuterRadius: number;
+  openingHalfExtents: [number, number];
+  minClearance: number;
+  requiredClearance: number;
+  violationAxes: string[];
+  pipeRing: TransferableCrossSectionRing;
+  wallOpening: TransferableStructuralOpening;
+}
+
+interface TransferableClearanceResult {
+  violations: TransferableClearanceViolation[];
+  totalCount: number;
+  criticalCount: number;
+  compliantCount: number;
+  checkTimeMs: number;
+}
+
+interface ElementCategory {
+  id: number;
+  category: string;
+  elementType: string;
+}
+
 interface StackFrame {
   nodeIdx: number;
   start: number;
@@ -465,6 +517,280 @@ function detectHardClashes(
   return clashes;
 }
 
+const REQUIRED_CLEARANCE_MM = 50;
+const RING_SEGMENTS = 32;
+
+function generateCirclePoints(radius: number, segments: number): [number, number][] {
+  const points: [number, number][] = [];
+  for (let i = 0; i < segments; i++) {
+    const angle = (2 * Math.PI * i) / segments;
+    points.push([radius * Math.cos(angle), radius * Math.sin(angle)]);
+  }
+  return points;
+}
+
+function classifyBoxCategory(
+  box: TransferableBoundingBox,
+  id: number,
+  categories: ElementCategory[]
+): { isStructural: boolean; category: string; elementType: string } {
+  const cat = categories.find((c) => c.id === id);
+  if (cat) {
+    const isStructural = cat.elementType.includes('wall') ||
+      cat.elementType.includes('slab') ||
+      cat.elementType.includes('Wall') ||
+      cat.elementType.includes('Slab') ||
+      cat.elementType === 'IfcWall' ||
+      cat.elementType === 'IfcSlab' ||
+      cat.elementType === 'IfcWallStandardCase';
+    return { isStructural, category: cat.category, elementType: cat.elementType };
+  }
+
+  const dx = box.max[0] - box.min[0];
+  const dy = box.max[1] - box.min[1];
+  const dz = box.max[2] - box.min[2];
+  const dims = [dx, dy, dz].sort((a, b) => a - b);
+  const aspectRatio = dims[2] / Math.max(0.001, dims[0]);
+
+  if (aspectRatio > 8 && dims[0] < 1.0) {
+    return { isStructural: false, category: 'pipe', elementType: 'pipe' };
+  }
+  if (dims[1] < 0.8 && (dx > 3 || dz > 3)) {
+    return { isStructural: true, category: 'structural', elementType: 'IfcWall' };
+  }
+  if (dims[0] < 1.0 && dims[1] < 1.0 && dz > 1.0) {
+    return { isStructural: false, category: 'pipe', elementType: 'pipe' };
+  }
+  return { isStructural: false, category: 'hvac', elementType: 'duct' };
+}
+
+function boxesOverlap3D(a: TransferableBoundingBox, b: TransferableBoundingBox): boolean {
+  return (
+    a.min[0] <= b.max[0] && a.max[0] >= b.min[0] &&
+    a.min[1] <= b.max[1] && a.max[1] >= b.min[1] &&
+    a.min[2] <= b.max[2] && a.max[2] >= b.min[2]
+  );
+}
+
+function boxInsideSectionBox(
+  box: TransferableBoundingBox,
+  section: TransferableSectionBox
+): boolean {
+  const sMin: [number, number, number] = [
+    section.position[0] - section.size[0] * 0.5,
+    section.position[1] - section.size[1] * 0.5,
+    section.position[2] - section.size[2] * 0.5,
+  ];
+  const sMax: [number, number, number] = [
+    section.position[0] + section.size[0] * 0.5,
+    section.position[1] + section.size[1] * 0.5,
+    section.position[2] + section.size[2] * 0.5,
+  ];
+  return (
+    box.min[0] <= sMax[0] && box.max[0] >= sMin[0] &&
+    box.min[1] <= sMax[1] && box.max[1] >= sMin[1] &&
+    box.min[2] <= sMax[2] && box.max[2] >= sMin[2]
+  );
+}
+
+function computeCrossSectionRing(
+  box: TransferableBoundingBox,
+  sectionAxis: number,
+  sectionPos: number,
+  elementId: number,
+  category: string
+): TransferableCrossSectionRing | null {
+  const axes = [0, 1, 2].filter((a) => a !== sectionAxis);
+  const a0 = axes[0];
+  const a1 = axes[1];
+
+  if (box.min[sectionAxis] > sectionPos || box.max[sectionAxis] < sectionPos) {
+    return null;
+  }
+
+  const c0 = (box.min[a0] + box.max[a0]) * 0.5;
+  const c1 = (box.min[a1] + box.max[a1]) * 0.5;
+  const r0 = (box.max[a0] - box.min[a0]) * 0.5;
+  const r1 = (box.max[a1] - box.min[a1]) * 0.5;
+
+  const outerRadius = Math.max(r0, r1);
+  const innerRadius = Math.min(r0, r1) * 0.85;
+
+  const center: [number, number, number] = [0, 0, 0];
+  center[sectionAxis] = sectionPos;
+  center[a0] = c0;
+  center[a1] = c1;
+
+  const points = generateCirclePoints(outerRadius, RING_SEGMENTS);
+
+  return {
+    elementId,
+    category,
+    center,
+    outerRadius,
+    innerRadius,
+    points,
+  };
+}
+
+function computeStructuralOpening(
+  wallBox: TransferableBoundingBox,
+  sectionAxis: number,
+  sectionPos: number,
+  elementId: number
+): TransferableStructuralOpening | null {
+  const axes = [0, 1, 2].filter((a) => a !== sectionAxis);
+  const a0 = axes[0];
+  const a1 = axes[1];
+
+  if (wallBox.min[sectionAxis] > sectionPos || wallBox.max[sectionAxis] < sectionPos) {
+    return null;
+  }
+
+  const center: [number, number, number] = [0, 0, 0];
+  center[sectionAxis] = sectionPos;
+  center[a0] = (wallBox.min[a0] + wallBox.max[a0]) * 0.5;
+  center[a1] = (wallBox.min[a1] + wallBox.max[a1]) * 0.5;
+
+  const halfExtents: [number, number] = [
+    (wallBox.max[a0] - wallBox.min[a0]) * 0.5,
+    (wallBox.max[a1] - wallBox.min[a1]) * 0.5,
+  ];
+
+  const normal: [number, number, number] = [0, 0, 0];
+  normal[sectionAxis] = 1;
+
+  return {
+    elementId,
+    center,
+    halfExtents,
+    normal,
+  };
+}
+
+function computeClearance(
+  pipeRing: TransferableCrossSectionRing,
+  wallOpening: TransferableStructuralOpening,
+  sectionAxis: number
+): { minClearance: number; violationAxes: string[] } {
+  const axes = [0, 1, 2].filter((a) => a !== sectionAxis);
+  const a0 = axes[0];
+  const a1 = axes[1];
+
+  const pipeCenter0 = pipeRing.center[a0];
+  const pipeCenter1 = pipeRing.center[a1];
+  const pipeR0 = pipeRing.outerRadius;
+  const pipeR1 = pipeRing.innerRadius;
+
+  const wallCenter0 = wallOpening.center[a0];
+  const wallCenter1 = wallOpening.center[a1];
+  const wallHalf0 = wallOpening.halfExtents[0];
+  const wallHalf1 = wallOpening.halfExtents[1];
+
+  const dist0 = Math.abs(pipeCenter0 - wallCenter0);
+  const clearance0 = wallHalf0 - dist0 - pipeR0;
+
+  const dist1 = Math.abs(pipeCenter1 - wallCenter1);
+  const clearance1 = wallHalf1 - dist1 - pipeR1;
+
+  const minClearance = Math.min(clearance0, clearance1);
+  const violationAxes: string[] = [];
+
+  const reqM = REQUIRED_CLEARANCE_MM / 1000;
+  if (clearance0 < reqM) violationAxes.push('x');
+  if (clearance1 < reqM) violationAxes.push('y');
+
+  return { minClearance, violationAxes };
+}
+
+function checkClearance(
+  boxes: TransferableBoundingBox[],
+  categories: ElementCategory[],
+  sectionBox: TransferableSectionBox
+): TransferableClearanceResult {
+  const startTime = performance.now();
+
+  const structuralIds: number[] = [];
+  const mepIds: number[] = [];
+
+  for (let i = 0; i < boxes.length; i++) {
+    if (!boxInsideSectionBox(boxes[i], sectionBox)) continue;
+    const cls = classifyBoxCategory(boxes[i], i, categories);
+    if (cls.isStructural) {
+      structuralIds.push(i);
+    } else {
+      mepIds.push(i);
+    }
+  }
+
+  let sectionAxis = 0;
+  let maxDim = sectionBox.size[0];
+  if (sectionBox.size[1] > maxDim) { sectionAxis = 1; maxDim = sectionBox.size[1]; }
+  if (sectionBox.size[2] > maxDim) { sectionAxis = 2; maxDim = sectionBox.size[2]; }
+
+  const sectionPos = sectionBox.position[sectionAxis];
+
+  const violations: TransferableClearanceViolation[] = [];
+  let violationId = 0;
+  let compliantCount = 0;
+
+  for (const mepIdx of mepIds) {
+    const mepBox = boxes[mepIdx];
+    const mepCls = classifyBoxCategory(mepBox, mepIdx, categories);
+
+    for (const structIdx of structuralIds) {
+      const structBox = boxes[structIdx];
+
+      if (!boxesOverlap3D(mepBox, structBox)) continue;
+
+      const pipeRing = computeCrossSectionRing(mepBox, sectionAxis, sectionPos, mepIdx, mepCls.category);
+      if (!pipeRing) continue;
+
+      const wallOpening = computeStructuralOpening(structBox, sectionAxis, sectionPos, structIdx);
+      if (!wallOpening) continue;
+
+      const { minClearance, violationAxes } = computeClearance(pipeRing, wallOpening, sectionAxis);
+
+      const reqM = REQUIRED_CLEARANCE_MM / 1000;
+      const sectionCenter: [number, number, number] = [...pipeRing.center];
+      const sectionNormal: [number, number, number] = [0, 0, 0];
+      sectionNormal[sectionAxis] = 1;
+
+      if (violationAxes.length > 0) {
+        violations.push({
+          id: violationId++,
+          pipeId: mepIdx,
+          wallId: structIdx,
+          pipeCategory: mepCls.category,
+          sectionCenter,
+          sectionNormal,
+          pipeOuterRadius: pipeRing.outerRadius,
+          openingHalfExtents: wallOpening.halfExtents,
+          minClearance,
+          requiredClearance: REQUIRED_CLEARANCE_MM,
+          violationAxes,
+          pipeRing,
+          wallOpening,
+        });
+      } else {
+        compliantCount++;
+      }
+    }
+  }
+
+  const criticalCount = violations.filter(
+    (v) => v.minClearance < 0 || v.violationAxes.length >= 2
+  ).length;
+
+  return {
+    violations,
+    totalCount: violations.length + compliantCount,
+    criticalCount,
+    compliantCount,
+    checkTimeMs: performance.now() - startTime,
+  };
+}
+
 self.onmessage = (e: MessageEvent) => {
   const { type, payload, id } = e.data;
 
@@ -501,6 +827,15 @@ self.onmessage = (e: MessageEvent) => {
           primIndices: Int32Array;
         };
         result = detectHardClashes(boxes, bvhNodes, primIndices);
+        break;
+      }
+      case 'checkClearance': {
+        const { boxes, categories, sectionBox } = payload as {
+          boxes: TransferableBoundingBox[];
+          categories: ElementCategory[];
+          sectionBox: TransferableSectionBox;
+        };
+        result = checkClearance(boxes, categories, sectionBox);
         break;
       }
       default:

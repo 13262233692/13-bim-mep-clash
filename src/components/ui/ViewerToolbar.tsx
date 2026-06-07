@@ -1,4 +1,4 @@
-import { ScanEye, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { ScanEye, RotateCcw, SlidersHorizontal, BoxSelect } from 'lucide-react';
 import { useMepClashStore } from '@/store';
 
 export function ViewerToolbar() {
@@ -6,6 +6,8 @@ export function ViewerToolbar() {
   const setXrayMode = useMepClashStore((s) => s.setXrayMode);
   const opacity = useMepClashStore((s) => s.opacity);
   const setOpacity = useMepClashStore((s) => s.setOpacity);
+  const sectionBoxActive = useMepClashStore((s) => s.sectionBoxActive);
+  const setSectionBoxActive = useMepClashStore((s) => s.setSectionBoxActive);
 
   return (
     <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-[#1C2333]/90 backdrop-blur-md border border-[#2D3548] rounded-xl px-3 py-2 shadow-lg">
@@ -15,6 +17,16 @@ export function ViewerToolbar() {
         icon={<ScanEye size={18} />}
         label="X 光透视"
         activeColor="#00D4AA"
+      />
+
+      <div className="w-px h-6 bg-[#2D3548]" />
+
+      <ToolbarButton
+        active={sectionBoxActive}
+        onClick={() => setSectionBoxActive(!sectionBoxActive)}
+        icon={<BoxSelect size={18} />}
+        label="剖切盒"
+        activeColor="#FF6B35"
       />
 
       <div className="w-px h-6 bg-[#2D3548]" />
@@ -41,6 +53,7 @@ export function ViewerToolbar() {
         onClick={() => {
           setXrayMode(false);
           setOpacity(0.35);
+          setSectionBoxActive(false);
         }}
         icon={<RotateCcw size={16} />}
         label="重置"
@@ -68,7 +81,7 @@ function ToolbarButton({ active, onClick, icon, label, activeColor }: ToolbarBut
           : 'text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#2D3548]/50'
         }
       `}
-      style={active && activeColor ? { backgroundColor: `${activeColor}15`, color: activeColor } : undefined}
+      style={active && activeColor ? { backgroundColor: `${activeColor}15`, color: activeColor, boxShadow: `0 0 10px ${activeColor}33` } : undefined}
       title={label}
     >
       {icon}

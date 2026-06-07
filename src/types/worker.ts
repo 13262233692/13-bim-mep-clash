@@ -67,3 +67,49 @@ export interface TransferableClashPair {
   overlapMin: [number, number, number];
   overlapMax: [number, number, number];
 }
+
+export interface TransferableSectionBox {
+  position: [number, number, number];
+  size: [number, number, number];
+  rotation: [number, number, number];
+}
+
+export interface TransferableCrossSectionRing {
+  elementId: number;
+  category: string;
+  center: [number, number, number];
+  outerRadius: number;
+  innerRadius: number;
+  points: [number, number][];
+}
+
+export interface TransferableStructuralOpening {
+  elementId: number;
+  center: [number, number, number];
+  halfExtents: [number, number];
+  normal: [number, number, number];
+}
+
+export interface TransferableClearanceViolation {
+  id: number;
+  pipeId: number;
+  wallId: number;
+  pipeCategory: string;
+  sectionCenter: [number, number, number];
+  sectionNormal: [number, number, number];
+  pipeOuterRadius: number;
+  openingHalfExtents: [number, number];
+  minClearance: number;
+  requiredClearance: number;
+  violationAxes: string[];
+  pipeRing: TransferableCrossSectionRing;
+  wallOpening: TransferableStructuralOpening;
+}
+
+export interface TransferableClearanceResult {
+  violations: TransferableClearanceViolation[];
+  totalCount: number;
+  criticalCount: number;
+  compliantCount: number;
+  checkTimeMs: number;
+}

@@ -140,6 +140,59 @@ export interface ClashPair {
   overlapMax: [number, number, number];
 }
 
+export interface SectionBox {
+  position: [number, number, number];
+  size: [number, number, number];
+  rotation: [number, number, number];
+}
+
+export interface SectionPlane {
+  normal: [number, number, number];
+  distance: number;
+  axis: 'x' | 'y' | 'z';
+}
+
+export interface CrossSectionRing {
+  elementId: number;
+  category: MepSystemCategory;
+  center: [number, number, number];
+  outerRadius: number;
+  innerRadius: number;
+  points: [number, number][];
+}
+
+export interface StructuralOpening {
+  elementId: number;
+  center: [number, number, number];
+  halfExtents: [number, number];
+  normal: [number, number, number];
+}
+
+export interface ClearanceViolation {
+  id: number;
+  pipeId: number;
+  wallId: number;
+  pipeCategory: MepSystemCategory;
+  sectionCenter: [number, number, number];
+  sectionNormal: [number, number, number];
+  pipeOuterRadius: number;
+  openingHalfExtents: [number, number];
+  minClearance: number;
+  requiredClearance: number;
+  violationAxes: ('x' | 'y')[];
+  pipeRing: CrossSectionRing;
+  wallOpening: StructuralOpening;
+}
+
+export interface ClearanceResult {
+  violations: ClearanceViolation[];
+  totalCount: number;
+  criticalCount: number;
+  compliantCount: number;
+  checkTimeMs: number;
+  sectionBox: SectionBox;
+}
+
 export type ClashSeverity = 'critical' | 'moderate' | 'minor';
 
 export interface ClashResult {

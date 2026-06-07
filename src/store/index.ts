@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { IFCModel, SpatialLevel, MepElement, MepSystem, MepSystemCategory, GeometryData, InstancedMeshData, ParseProgress, BoundingBox, ClashPair, ClashResult, BVHBuildResult } from '@/types';
+import type { IFCModel, SpatialLevel, MepElement, MepSystem, MepSystemCategory, GeometryData, InstancedMeshData, ParseProgress, BoundingBox, ClashPair, ClashResult, BVHBuildResult, SectionBox, ClearanceResult } from '@/types';
 
 interface MepClashStore {
   ifcModel: IFCModel | null;
@@ -12,6 +12,11 @@ interface MepClashStore {
   bvhData: BVHBuildResult | null;
   clashResult: ClashResult | null;
   clashDetecting: boolean;
+
+  sectionBoxActive: boolean;
+  sectionBox: SectionBox;
+  clearanceResult: ClearanceResult | null;
+  clearanceChecking: boolean;
 
   selectedLevelId: number | null;
   selectedSystemIds: string[];
@@ -32,6 +37,11 @@ interface MepClashStore {
   setBvhData: (data: BVHBuildResult | null) => void;
   setClashResult: (result: ClashResult | null) => void;
   setClashDetecting: (detecting: boolean) => void;
+
+  setSectionBoxActive: (active: boolean) => void;
+  setSectionBox: (box: SectionBox) => void;
+  setClearanceResult: (result: ClearanceResult | null) => void;
+  setClearanceChecking: (checking: boolean) => void;
 
   setSelectedLevel: (id: number | null) => void;
   toggleSystem: (systemId: string) => void;
@@ -63,6 +73,14 @@ const initialState = {
   bvhData: null as BVHBuildResult | null,
   clashResult: null as ClashResult | null,
   clashDetecting: false,
+  sectionBoxActive: false,
+  sectionBox: {
+    position: [0, 5, 0] as [number, number, number],
+    size: [20, 10, 20] as [number, number, number],
+    rotation: [0, 0, 0] as [number, number, number],
+  } as SectionBox,
+  clearanceResult: null as ClearanceResult | null,
+  clearanceChecking: false,
   selectedLevelId: null,
   selectedSystemIds: ['hvac', 'cable_tray', 'pipe'],
   xrayMode: false,
@@ -87,6 +105,11 @@ export const useMepClashStore = create<MepClashStore>((set) => ({
   setBvhData: (data) => set({ bvhData: data }),
   setClashResult: (result) => set({ clashResult: result }),
   setClashDetecting: (detecting) => set({ clashDetecting: detecting }),
+
+  setSectionBoxActive: (active) => set({ sectionBoxActive: active }),
+  setSectionBox: (box) => set({ sectionBox: box }),
+  setClearanceResult: (result) => set({ clearanceResult: result }),
+  setClearanceChecking: (checking) => set({ clearanceChecking: checking }),
 
   setSelectedLevel: (id) => set({ selectedLevelId: id }),
   toggleSystem: (systemId) => set((state) => {

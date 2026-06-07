@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PanelLeftClose, PanelLeftOpen, ArrowLeft, ShieldAlert, Loader2 } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, ArrowLeft, ShieldAlert, Loader2, Ruler } from 'lucide-react';
 import { useState } from 'react';
 import { ViewerCanvas } from '@/components/scene/ViewerCanvas';
 import { LevelTree } from '@/components/ui/LevelTree';
@@ -9,6 +9,7 @@ import { ViewerToolbar } from '@/components/ui/ViewerToolbar';
 import { StatusBar } from '@/components/ui/StatusBar';
 import { useMepClashStore } from '@/store';
 import { runClashDetection } from '@/utils/clash';
+import { runClearanceCheck } from '@/utils/section';
 
 export default function ViewerPage() {
   const navigate = useNavigate();
@@ -22,11 +23,18 @@ export default function ViewerPage() {
   const geometryRegistry = useMepClashStore((s) => s.geometryRegistry);
   const instanceRegistry = useMepClashStore((s) => s.instanceRegistry);
   const boundingBoxes = useMepClashStore((s) => s.boundingBoxes);
+  const mepElements = useMepClashStore((s) => s.mepElements);
   const xrayMode = useMepClashStore((s) => s.xrayMode);
   const clashResult = useMepClashStore((s) => s.clashResult);
   const clashDetecting = useMepClashStore((s) => s.clashDetecting);
   const setClashResult = useMepClashStore((s) => s.setClashResult);
   const setClashDetecting = useMepClashStore((s) => s.setClashDetecting);
+  const sectionBoxActive = useMepClashStore((s) => s.sectionBoxActive);
+  const sectionBox = useMepClashStore((s) => s.sectionBox);
+  const clearanceResult = useMepClashStore((s) => s.clearanceResult);
+  const clearanceChecking = useMepClashStore((s) => s.clearanceChecking);
+  const setClearanceResult = useMepClashStore((s) => s.setClearanceResult);
+  const setClearanceChecking = useMepClashStore((s) => s.setClearanceChecking);
 
   const [panelOpen, setPanelOpen] = useState(true);
 
@@ -54,6 +62,19 @@ export default function ViewerPage() {
       setClashDetecting(false);
     }
   }, [boundingBoxes, clashDetecting, setClashDetecting, setClashResult]);
+
+  const handleClearanceCheck = useCallback(async () => {
+    if (clearanceChecking || !sectionBoxActive) return;
+    setClearanceChecking(true);
+    try {
+      const result = await runClearanceCheck(boundingBoxes, mepElements, sectionBox);
+      setClearanceResult(result);
+    } catch {
+      setClearanceResult(null);
+    } finally {
+      setClearanceChecking(false);
+    }
+  }, [boundingBoxes, mepElements, sectionBox, sectionBoxActive, clearanceChecking, setClearanceChecking, setClearanceResult]);
 
   if (!ifcModel) {
     return (
@@ -108,7 +129,7 @@ export default function ViewerPage() {
                 />
               </div>
 
-              <div className="border-t border-[#2D3548] pt-4 mx-3">
+              <div className="border-t border-[#2D3548] pt-4 mx-3 space-y-2">
                 <button
                   onClick={handleClashDetect}
                   disabled={clashDetecting}
@@ -132,6 +153,32 @@ export default function ViewerPage() {
                     </>
                   )}
                 </button>
+
+                <button
+                  onClick={handleClearanceCheck}
+                  disabled={clearanceChecking || !sectionBoxActive}
+                  className={`
+                    w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                    ${clearanceChecking
+                      ? 'bg-[#FF4444]/10 text-[#FF4444] cursor-wait'
+                      : !sectionBoxActive
+                        ? 'bg-[#2D3548]/30 text-[#7D8590] cursor-not-allowed'
+                        : 'bg-[#FF4444]/15 text-[#FF4444] hover:bg-[#FF4444]/25 shadow-[0_0_10px_rgba(255,68,68,0.15)]'
+                    }
+                  `}
+                >
+                  {clearanceChecking ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>净空审查中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Ruler size={16} />
+                      <span>{sectionBoxActive ? '净空审查' : '请先开启剖切盒'}</span>
+                    </>
+                  )}
+                </button>
               </div>
 
               {clashResult && (
@@ -140,9 +187,21 @@ export default function ViewerPage() {
                 </div>
               )}
 
+              {clearanceResult && (
+                <div className="border-t border-[#2D3548] pt-4 mx-3">
+                  <ClearanceResultPanel result={clearanceResult} />
+                </div>
+              )}
+
               {xrayMode && (
                 <div className="border-t border-[#2D3548] pt-4 mx-3">
                   <XrayInfo />
+                </div>
+              )}
+
+              {sectionBoxActive && (
+                <div className="border-t border-[#2D3548] pt-4 mx-3">
+                  <SectionBoxInfo />
                 </div>
               )}
             </div>
@@ -167,6 +226,7 @@ export default function ViewerPage() {
             geometries={geoData}
             instances={instanceRegistry}
             clashPairs={clashResult?.pairs}
+            clearanceViolations={clearanceResult?.violations}
           />
           <ViewerToolbar />
 
@@ -236,12 +296,80 @@ function ClashResultPanel({ result }: { result: { totalCount: number; criticalCo
   );
 }
 
+function ClearanceResultPanel({ result }: { result: { violations: { minClearance: number; violationAxes: string[]; pipeCategory: string }[]; totalCount: number; criticalCount: number; compliantCount: number; checkTimeMs: number } }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-medium text-[#FF4444] uppercase tracking-wider">
+        净空审查结果
+      </h3>
+      <div className="bg-[#0D1117] rounded-lg p-3 space-y-2">
+        <div className="flex justify-between text-xs">
+          <span className="text-[#7D8590]">审查总数</span>
+          <span className="text-[#E6EDF3] font-mono font-medium">{result.totalCount}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-[#FF4444]">净空违规</span>
+          <span className="text-[#FF4444] font-mono font-medium">{result.violations.length}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-[#FF4444]">严重违规</span>
+          <span className="text-[#FF4444] font-mono font-medium">{result.criticalCount}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-[#00D4AA]">合规</span>
+          <span className="text-[#00D4AA] font-mono font-medium">{result.compliantCount}</span>
+        </div>
+        <div className="border-t border-[#2D3548] pt-1.5 space-y-1">
+          <div className="flex justify-between text-xs">
+            <span className="text-[#7D8590]">审查耗时</span>
+            <span className="text-[#E6EDF3] font-mono">{result.checkTimeMs.toFixed(0)}ms</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-[#7D8590]">国标净空</span>
+            <span className="text-[#E6EDF3] font-mono">≥ 50mm</span>
+          </div>
+        </div>
+        {result.violations.length > 0 && (
+          <div className="border-t border-[#2D3548] pt-2 space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+            {result.violations.slice(0, 10).map((v, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs">
+                <span className={`w-1.5 h-1.5 rounded-full ${v.minClearance < 0 ? 'bg-[#FF4444]' : 'bg-[#FFB020]'}`} />
+                <span className="text-[#7D8590]">{v.pipeCategory}</span>
+                <span className="text-[#E6EDF3] font-mono">
+                  {v.minClearance < 0 ? '侵入' : `${(v.minClearance * 1000).toFixed(1)}mm`}
+                </span>
+                <span className="text-[#7D8590]">
+                  ({v.violationAxes.join('+')})
+                </span>
+              </div>
+            ))}
+            {result.violations.length > 10 && (
+              <p className="text-xs text-[#7D8590]">...还有 {result.violations.length - 10} 项</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function XrayInfo() {
   return (
     <div className="bg-[#00D4AA]/5 border border-[#00D4AA]/20 rounded-lg p-3">
       <p className="text-xs text-[#00D4AA] font-medium mb-1">X 光透视模式</p>
       <p className="text-xs text-[#7D8590] leading-relaxed">
         半透明材质已启用，可透视墙体内隐藏管网。使用顶部工具栏调节透明度和重置视图。
+      </p>
+    </div>
+  );
+}
+
+function SectionBoxInfo() {
+  return (
+    <div className="bg-[#FF6B35]/5 border border-[#FF6B35]/20 rounded-lg p-3">
+      <p className="text-xs text-[#FF6B35] font-medium mb-1">剖切盒模式</p>
+      <p className="text-xs text-[#7D8590] leading-relaxed">
+        拖拽剖切盒裁切模型，隐藏盒外几何体。定位到管道穿墙区域后，点击「净空审查」自动检查施工套管净空。
       </p>
     </div>
   );

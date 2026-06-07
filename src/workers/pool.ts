@@ -1,6 +1,6 @@
-import type { TransferableInstanceData, TransferableBoundingBox, TransferableOptimizedGeometry, TransferableBVHBuildResult, TransferableBVHNodeData, TransferableClashPair } from '@/types';
+import type { TransferableInstanceData, TransferableBoundingBox, TransferableOptimizedGeometry, TransferableBVHBuildResult, TransferableBVHNodeData, TransferableClashPair, TransferableSectionBox, TransferableClearanceResult } from '@/types';
 
-type WorkerCommand = 'computeInstancedMatrices' | 'computeBoundingBoxes' | 'optimizeVertexData' | 'buildBVH' | 'detectHardClashes';
+type WorkerCommand = 'computeInstancedMatrices' | 'computeBoundingBoxes' | 'optimizeVertexData' | 'buildBVH' | 'detectHardClashes' | 'checkClearance';
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -127,6 +127,18 @@ class GeometryWorkerPool {
       boxes,
       bvhNodes,
       primIndices,
+    });
+  }
+
+  async checkClearance(
+    boxes: TransferableBoundingBox[],
+    categories: { id: number; category: string; elementType: string }[],
+    sectionBox: TransferableSectionBox
+  ): Promise<TransferableClearanceResult> {
+    return this.dispatch<TransferableClearanceResult>('checkClearance', {
+      boxes,
+      categories,
+      sectionBox,
     });
   }
 
