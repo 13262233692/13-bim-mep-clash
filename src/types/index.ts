@@ -1,0 +1,2 @@
+export { type IfcWasmModule, type IfcParseResult, type SweptSolidData, type SpatialNode, type BoundingBox, type IFCModel, type SpatialLevel, type MepElement, type MepSystemCategory, type MepSystem, type GeometryData, type InstancedMeshData, type InstanceData, type VertexData, type OptimizedGeometry, type ParseStage, type ParseProgress } from './ifc';
+export { type GeometryWorkerApi, type TransferableInstanceData, type TransferableBoundingBox, type TransferableOptimizedGeometry } from './worker';
